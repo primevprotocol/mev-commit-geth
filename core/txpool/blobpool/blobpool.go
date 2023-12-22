@@ -41,8 +41,10 @@ import (
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/tracer/global"
 	"github.com/holiman/billy"
 	"github.com/holiman/uint256"
+	"github.com/opentracing/opentracing-go"
 )
 
 const (
@@ -738,7 +740,7 @@ func (p *BlobPool) offload(addr common.Address, nonce uint64, id uint64, inclusi
 }
 
 // Reset implements txpool.SubPool, allowing the blob pool's internal state to be
-// kept in sync with the main transaction pool's internal state.
+// kept in sync with the main transacion pool's internal state.
 func (p *BlobPool) Reset(oldHead, newHead *types.Header) {
 	waitStart := time.Now()
 	p.lock.Lock()
@@ -972,7 +974,7 @@ func (p *BlobPool) reinject(addr common.Address, txhash common.Hash) error {
 }
 
 // SetGasTip implements txpool.SubPool, allowing the blob pool's gas requirements
-// to be kept in sync with the main transaction pool's gas requirements.
+// to be kept in sync with the main transacion pool's gas requirements.
 func (p *BlobPool) SetGasTip(tip *big.Int) {
 	p.lock.Lock()
 	defer p.lock.Unlock()
@@ -1162,7 +1164,10 @@ func (p *BlobPool) Get(hash common.Hash) *types.Transaction {
 
 // Add inserts a set of blob transactions into the pool if they pass validation (both
 // consensus validity and pool restictions).
-func (p *BlobPool) Add(txs []*types.Transaction, local bool, sync bool) []error {
+func (p *BlobPool) Add(txs []*types.Transaction, local bool, sync bool, span opentracing.Span) []error {
+
+	sp3 := global.Tracer.StartSubSpan(span, "legacypool:Add")
+	defer global.Tracer.FinishSpan(sp3)
 	var (
 		adds = make([]*types.Transaction, 0, len(txs))
 		errs = make([]error, len(txs))

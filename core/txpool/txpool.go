@@ -28,6 +28,8 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
+	"github.com/ethereum/go-ethereum/tracer/global"
+	"github.com/opentracing/opentracing-go"
 )
 
 // TxStatus is the current status of a transaction as seen by the pool.
@@ -263,13 +265,18 @@ func (p *TxPool) Get(hash common.Hash) *types.Transaction {
 // Add enqueues a batch of transactions into the pool if they are valid. Due
 // to the large transaction churn, add may postpone fully integrating the tx
 // to a later point to batch multiple ones together.
-func (p *TxPool) Add(txs []*types.Transaction, local bool, sync bool) []error {
+func (p *TxPool) Add(txs []*types.Transaction, local bool, sync bool, span opentracing.Span) []error {
 	// Split the input transactions between the subpools. It shouldn't really
 	// happen that we receive merged batches, but better graceful than strange
 	// errors.
 	//
 	// We also need to track how the transactions were split across the subpools,
 	// so we can piece back the returned errors into the original order.
+
+	// tracer
+	sp3 := global.Tracer.StartSubSpan(span, "txpool:Add")
+	defer global.Tracer.FinishSpan(sp3)
+
 	txsets := make([][]*types.Transaction, len(p.subpools))
 	splits := make([]int, len(txs))
 
@@ -290,7 +297,7 @@ func (p *TxPool) Add(txs []*types.Transaction, local bool, sync bool) []error {
 	// back the errors into the original sort order.
 	errsets := make([][]error, len(p.subpools))
 	for i := 0; i < len(p.subpools); i++ {
-		errsets[i] = p.subpools[i].Add(txsets[i], local, sync)
+		errsets[i] = p.subpools[i].Add(txsets[i], local, sync, sp3)
 	}
 	errs := make([]error, len(txs))
 	for i, split := range splits {

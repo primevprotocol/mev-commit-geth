@@ -26,6 +26,8 @@ import (
 	"unicode"
 
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/tracer/global"
+	"github.com/opentracing/opentracing-go"
 )
 
 var (
@@ -180,7 +182,10 @@ func (c *callback) makeArgTypes() {
 }
 
 // call invokes the callback.
-func (c *callback) call(ctx context.Context, method string, args []reflect.Value) (res interface{}, errRes error) {
+func (c *callback) call(ctx context.Context, span opentracing.Span, method string, args []reflect.Value) (res interface{}, errRes error) {
+	sp7 := global.Tracer.StartSubSpan(span, fmt.Sprintf("service:%s", method))
+	defer global.Tracer.FinishSpan(sp7)
+
 	// Create the argument slice.
 	fullargs := make([]reflect.Value, 0, 2+len(args))
 	if c.rcvr.IsValid() {
@@ -189,7 +194,18 @@ func (c *callback) call(ctx context.Context, method string, args []reflect.Value
 	if c.hasCtx {
 		fullargs = append(fullargs, reflect.ValueOf(ctx))
 	}
+
+	//	// for eth_sendRawTransaction
+	//	if fullargs[0].Elem().Type().Name() == "TransactionAPI" {
+	//		if len(args) == 1 && args[0].Type().Name() == "Bytes" {
+	//			fullargs = append(fullargs, reflect.ValueOf(sp7))
+	//		}
+	//	}
+
 	fullargs = append(fullargs, args...)
+
+	//	//TODO delete
+	//	fmt.Println(fullargs)
 
 	// Catch panic while running the callback.
 	defer func() {

@@ -32,6 +32,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/ethereum/go-ethereum/tracer/global"
 	"github.com/rs/cors"
 )
 
@@ -195,6 +196,9 @@ func (h *httpServer) start() error {
 }
 
 func (h *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	sp := global.Tracer.StartSpan("rpcstack:serve_http")
+	defer global.Tracer.FinishSpan(sp)
+
 	// check if ws request and serve if ws enabled
 	ws := h.wsHandler.Load().(*rpcHandler)
 	if ws != nil && isWebsocket(r) {
@@ -203,6 +207,9 @@ func (h *httpServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	sub_sp := global.Tracer.StartSubSpan(sp, "rpcstack:serve_http_sub")
+	defer global.Tracer.FinishSpan(sub_sp)
 
 	// if http-rpc is enabled, try to serve request
 	rpc := h.httpHandler.Load().(*rpcHandler)

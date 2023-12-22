@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto/kzg4844"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/tracer/global"
 )
 
 // ValidationOptions define certain differences between transaction validation
@@ -47,6 +48,11 @@ type ValidationOptions struct {
 // This check is public to allow different transaction pools to check the basic
 // rules without duplicating code and running the risk of missed updates.
 func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types.Signer, opts *ValidationOptions) error {
+
+	// tracer
+	sp0 := global.Tracer.StartSpan("validation:validatetx")
+	defer global.Tracer.FinishSpan(sp0)
+
 	// Ensure transactions not implemented by the calling pool are rejected
 	if opts.Accept&(1<<tx.Type()) == 0 {
 		return fmt.Errorf("%w: tx type %v not supported by this pool", core.ErrTxTypeNotSupported, tx.Type())
@@ -108,6 +114,10 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 	if tx.GasTipCapIntCmp(opts.MinTip) < 0 {
 		return fmt.Errorf("%w: tip needed %v, tip permitted %v", ErrUnderpriced, opts.MinTip, tx.GasTipCap())
 	}
+
+	sp1 := global.Tracer.StartSubSpan(sp0, "validation:validatetx_blob")
+	defer global.Tracer.FinishSpan(sp1)
+
 	// Ensure blob transactions have valid commitments
 	if tx.Type() == types.BlobTxType {
 		sidecar := tx.BlobTxSidecar()
@@ -123,6 +133,10 @@ func ValidateTransaction(tx *types.Transaction, head *types.Header, signer types
 		if len(hashes) > params.MaxBlobGasPerBlock/params.BlobTxBlobGasPerBlob {
 			return fmt.Errorf("too many blobs in transaction: have %d, permitted %d", len(hashes), params.MaxBlobGasPerBlock/params.BlobTxBlobGasPerBlob)
 		}
+
+		sp2 := global.Tracer.StartSubSpan(sp1, "validation:validatetx_blob_side")
+		defer global.Tracer.FinishSpan(sp2)
+
 		if err := validateBlobSidecar(hashes, sidecar); err != nil {
 			return err
 		}

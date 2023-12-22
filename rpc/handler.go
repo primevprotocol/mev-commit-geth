@@ -26,6 +26,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/tracer/global"
+	"github.com/opentracing/opentracing-go"
 )
 
 // handler handles JSON-RPC messages. There is one handler per connection. Note that
@@ -70,6 +72,7 @@ type handler struct {
 type callProc struct {
 	ctx       context.Context
 	notifiers []*Notifier
+	span      opentracing.Span
 }
 
 func newHandler(connCtx context.Context, conn jsonWriter, idgen func() ID, reg *serviceRegistry, batchRequestLimit, batchResponseMaxSize int) *handler {
@@ -266,12 +269,19 @@ func (h *handler) handleMsg(msg *jsonrpcMessage) {
 	msgs := []*jsonrpcMessage{msg}
 	h.handleResponses(msgs, func(msg *jsonrpcMessage) {
 		h.startCallProc(func(cp *callProc) {
+			sp2 := global.Tracer.StartSubSpan(cp.span, "handler:handleMsg")
+			defer global.Tracer.FinishSpan(sp2)
+			cp.span = sp2
 			h.handleNonBatchCall(cp, msg)
 		})
 	})
 }
 
 func (h *handler) handleNonBatchCall(cp *callProc, msg *jsonrpcMessage) {
+	sp3 := global.Tracer.StartSubSpan(cp.span, "handler:handleNonBatchCall")
+	defer global.Tracer.FinishSpan(sp3)
+	cp.span = sp3
+
 	var (
 		responded sync.Once
 		timer     *time.Timer
@@ -379,12 +389,18 @@ func (h *handler) cancelServerSubscriptions(err error) {
 
 // startCallProc runs fn in a new goroutine and starts tracking it in the h.calls wait group.
 func (h *handler) startCallProc(fn func(*callProc)) {
+	sp0 := global.Tracer.StartSpan("handler:startCallProc")
+	defer global.Tracer.FinishSpan(sp0)
+
 	h.callWG.Add(1)
 	go func() {
+		sp1 := global.Tracer.StartSubSpan(sp0, "handler:startCallProc:sub1")
+		defer global.Tracer.FinishSpan(sp1)
+
 		ctx, cancel := context.WithCancel(h.rootCtx)
 		defer h.callWG.Done()
 		defer cancel()
-		fn(&callProc{ctx: ctx})
+		fn(&callProc{ctx: ctx, span: sp1})
 	}()
 }
 
@@ -459,6 +475,10 @@ func (h *handler) handleSubscriptionResult(msg *jsonrpcMessage) {
 
 // handleCallMsg executes a call message and returns the answer.
 func (h *handler) handleCallMsg(ctx *callProc, msg *jsonrpcMessage) *jsonrpcMessage {
+	sp4 := global.Tracer.StartSubSpan(ctx.span, "handler:handleCallMsg")
+	defer global.Tracer.FinishSpan(sp4)
+	ctx.span = sp4
+
 	start := time.Now()
 	switch {
 	case msg.isNotification():
@@ -491,6 +511,9 @@ func (h *handler) handleCallMsg(ctx *callProc, msg *jsonrpcMessage) *jsonrpcMess
 
 // handleCall processes method calls.
 func (h *handler) handleCall(cp *callProc, msg *jsonrpcMessage) *jsonrpcMessage {
+	sp5 := global.Tracer.StartSubSpan(cp.span, "handler:handleCall")
+	defer global.Tracer.FinishSpan(sp5)
+
 	if msg.isSubscribe() {
 		return h.handleSubscribe(cp, msg)
 	}
@@ -509,7 +532,7 @@ func (h *handler) handleCall(cp *callProc, msg *jsonrpcMessage) *jsonrpcMessage 
 		return msg.errorResponse(&invalidParamsError{err.Error()})
 	}
 	start := time.Now()
-	answer := h.runMethod(cp.ctx, msg, callb, args)
+	answer := h.runMethod(cp.ctx, msg, callb, args, sp5)
 
 	// Collect the statistics for RPC calls if metrics is enabled.
 	// We only care about pure rpc call. Filter out subscription.
@@ -557,12 +580,15 @@ func (h *handler) handleSubscribe(cp *callProc, msg *jsonrpcMessage) *jsonrpcMes
 	cp.notifiers = append(cp.notifiers, n)
 	ctx := context.WithValue(cp.ctx, notifierKey{}, n)
 
-	return h.runMethod(ctx, msg, callb, args)
+	return h.runMethod(ctx, msg, callb, args, nil)
 }
 
 // runMethod runs the Go callback for an RPC method.
-func (h *handler) runMethod(ctx context.Context, msg *jsonrpcMessage, callb *callback, args []reflect.Value) *jsonrpcMessage {
-	result, err := callb.call(ctx, msg.Method, args)
+func (h *handler) runMethod(ctx context.Context, msg *jsonrpcMessage, callb *callback, args []reflect.Value, span opentracing.Span) *jsonrpcMessage {
+	sp6 := global.Tracer.StartSubSpan(span, "handler:runMethod")
+	defer global.Tracer.FinishSpan(sp6)
+
+	result, err := callb.call(ctx, sp6, msg.Method, args)
 	if err != nil {
 		return msg.errorResponse(err)
 	}

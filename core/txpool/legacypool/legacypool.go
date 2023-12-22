@@ -37,6 +37,8 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ethereum/go-ethereum/tracer/global"
+	"github.com/opentracing/opentracing-go"
 )
 
 const (
@@ -917,13 +919,14 @@ func (pool *LegacyPool) promoteTx(addr common.Address, hash common.Hash, tx *typ
 // This method is used to add transactions from the RPC API and performs synchronous pool
 // reorganization and event propagation.
 func (pool *LegacyPool) addLocals(txs []*types.Transaction) []error {
-	return pool.Add(txs, !pool.config.NoLocals, true)
+	return pool.Add(txs, !pool.config.NoLocals, true, nil)
 }
 
 // addLocal enqueues a single local transaction into the pool if it is valid. This is
 // a convenience wrapper around addLocals.
 func (pool *LegacyPool) addLocal(tx *types.Transaction) error {
-	return pool.addLocals([]*types.Transaction{tx})[0]
+	errs := pool.addLocals([]*types.Transaction{tx})
+	return errs[0]
 }
 
 // addRemotes enqueues a batch of transactions into the pool if they are valid. If the
@@ -932,31 +935,84 @@ func (pool *LegacyPool) addLocal(tx *types.Transaction) error {
 // This method is used to add transactions from the p2p network and does not wait for pool
 // reorganization and internal event propagation.
 func (pool *LegacyPool) addRemotes(txs []*types.Transaction) []error {
-	return pool.Add(txs, false, false)
+	return pool.Add(txs, false, false, nil)
 }
 
 // addRemote enqueues a single transaction into the pool if it is valid. This is a convenience
 // wrapper around addRemotes.
 func (pool *LegacyPool) addRemote(tx *types.Transaction) error {
-	return pool.addRemotes([]*types.Transaction{tx})[0]
+	errs := pool.addRemotes([]*types.Transaction{tx})
+	return errs[0]
 }
 
 // addRemotesSync is like addRemotes, but waits for pool reorganization. Tests use this method.
 func (pool *LegacyPool) addRemotesSync(txs []*types.Transaction) []error {
-	return pool.Add(txs, false, true)
+	return pool.Add(txs, false, true, nil)
 }
 
 // This is like addRemotes with a single transaction, but waits for pool reorganization. Tests use this method.
 func (pool *LegacyPool) addRemoteSync(tx *types.Transaction) error {
-	return pool.Add([]*types.Transaction{tx}, false, true)[0]
+	return pool.Add([]*types.Transaction{tx}, false, true, nil)[0]
 }
 
-// Add enqueues a batch of transactions into the pool if they are valid. Depending
-// on the local flag, full pricing constraints will or will not be applied.
+//// changed
+//func (pool *LegacyPool) Add(txs []*types.Transaction, local, sync bool, span opentracing.Span) []error {
 //
-// If sync is set, the method will block until all internal maintenance related
-// to the add is finished. Only use this during tests for determinism!
-func (pool *LegacyPool) Add(txs []*types.Transaction, local, sync bool) []error {
+//	sp4 := global.Tracer.StartSubSpan(span, "legacypool:Add")
+//	defer global.Tracer.FinishSpan(sp4)
+//
+//	// Do not treat as local if local transactions have been disabled
+//	local = local && !pool.config.NoLocals
+//
+//	// Filter out known ones without obtaining the pool lock or recovering signatures
+//	news := make([]*types.Transaction, 0, len(txs))
+//	for _, tx := range txs {
+//		// If the transaction is known, skip
+//		if pool.all.Has(tx.Hash()) {
+//			continue
+//		}
+//
+//		// Exclude transactions with basic errors
+//		if err := pool.validateTxBasics(tx, local); err != nil {
+//			return []error{err}
+//		}
+//
+//		// Accumulate all unknown transactions
+//		news = append(news, tx)
+//	}
+//
+//	if len(news) == 0 {
+//		return nil
+//	}
+//
+//	sp5 := global.Tracer.StartSubSpan(sp4, "legacypool:req")
+//	defer global.Tracer.FinishSpan(sp5)
+//
+//	// Process all the new transaction and merge any errors into the original slice
+//	pool.mu.Lock()
+//	newErrs, dirtyAddrs := pool.addTxsLocked(news, local)
+//	pool.mu.Unlock()
+//
+//	// Merge the new errors into the existing slice
+//	for _, err := range newErrs {
+//		if err != nil {
+//			return append([]error{err}, errs...)
+//		}
+//	}
+//
+//	// Reorg the pool internals if needed and return
+//	done := pool.requestPromoteExecutables(dirtyAddrs)
+//	if sync {
+//		<-done
+//	}
+//	return errs
+//}
+
+func (pool *LegacyPool) Add(txs []*types.Transaction, local, sync bool, span opentracing.Span) []error {
+
+	sp4 := global.Tracer.StartSubSpan(span, "legacypool:Add")
+	defer global.Tracer.FinishSpan(sp4)
+
 	// Do not treat as local if local transactions have been disabled
 	local = local && !pool.config.NoLocals
 
@@ -977,7 +1033,6 @@ func (pool *LegacyPool) Add(txs []*types.Transaction, local, sync bool) []error 
 		// in transactions before obtaining lock
 		if err := pool.validateTxBasics(tx, local); err != nil {
 			errs[i] = err
-			log.Trace("Discarding invalid transaction", "hash", tx.Hash(), "err", err)
 			invalidTxMeter.Mark(1)
 			continue
 		}
@@ -987,6 +1042,9 @@ func (pool *LegacyPool) Add(txs []*types.Transaction, local, sync bool) []error 
 	if len(news) == 0 {
 		return errs
 	}
+
+	sp5 := global.Tracer.StartSubSpan(sp4, "legacypool:req")
+	defer global.Tracer.FinishSpan(sp5)
 
 	// Process all the new transaction and merge any errors into the original slice
 	pool.mu.Lock()
@@ -1009,11 +1067,108 @@ func (pool *LegacyPool) Add(txs []*types.Transaction, local, sync bool) []error 
 	return errs
 }
 
+//const maxTxs = 100
+//
+//// Add enqueues a batch of transactions into the pool if they are valid. Depending
+//// on the local flag, full pricing constraints will or will not be applied.
+////
+//// If sync is set, the method will block until all internal maintenance related
+//// to the add is finished. Only use this during tests for determinism!
+//func (pool *LegacyPool) Add(txs []*types.Transaction, local, sync bool, span opentracing.Span) []error {
+//	// Filter out known ones without obtaining the pool lock or recovering signatures
+//	sp4 := global.Tracer.StartSubSpan(span, "legacypool:Add")
+//	defer global.Tracer.FinishSpan(sp4)
+//	//	var (
+//	//		errs = make([]error, len(txs))
+//	//		news = make([]*types.Transaction, 0, len(txs))
+//	//	)
+//
+//	var (
+//		errs [maxTxs]error
+//		news [maxTxs]*types.Transaction
+//	)
+//
+//	errChan := make(chan error, len(txs))
+//	defer close(errChan)
+//
+//	it := 0
+//	for i, tx := range txs {
+//		// If the transaction is known, pre-set the error slot
+//		if pool.all.Get(tx.Hash()) != nil {
+//			errs[i] = txpool.ErrAlreadyKnown
+//			knownTxMeter.Mark(1)
+//			continue
+//		}
+//		// Exclude transactions with basic errors, e.g invalid signatures and
+//		// insufficient intrinsic gas as soon as possible and cache senders
+//		// in transactions before obtaining lock
+//		//		if err := pool.validateTxBasics(tx, local); err != nil {
+//		//			errs[i] = err
+//		//			invalidTxMeter.Mark(1)
+//		//			continue
+//		//		}
+//
+//		go func(tx *types.Transaction, local bool) {
+//			errChan <- pool.validateTxBasics(tx, local)
+//		}(tx, local)
+//		// Accumulate all unknown transactions for deeper processing
+//		//news = append(news, tx)
+//		//news[i] = tx
+//		//it++
+//	}
+//
+//	for i := 0; i < len(txs); i++ {
+//		err := <-errChan
+//		// Hata varsa, hata dizisine ekle
+//		if err != nil {
+//			errs[it] = err
+//			it++
+//		} else {
+//			// Hata yoksa, transaction'ı news dizisine ekle
+//			news[it] = txs[i]
+//			it++
+//		}
+//	}
+//
+//	//if len(news) == 0 {
+//	if it == 0 {
+//		return errs[:len(txs)]
+//		//return errs
+//	}
+//
+//	sp5 := global.Tracer.StartSubSpan(sp4, "legacypool:req")
+//	defer global.Tracer.FinishSpan(sp5)
+//
+//	// Process all the new transaction and merge any errors into the original slice
+//	pool.mu.Lock()
+//	newErrs, dirtyAddrs := pool.addTxsLocked(news[:it], local)
+//	pool.mu.Unlock()
+//
+//	var nilSlot = 0
+//	for _, err := range newErrs {
+//		for errs[nilSlot] != nil {
+//			nilSlot++
+//		}
+//		errs[nilSlot] = err
+//		nilSlot++
+//	}
+//	// Reorg the pool internals if needed and return
+//	done := pool.requestPromoteExecutables(dirtyAddrs)
+//	if sync {
+//		<-done
+//	}
+//
+//	//return errs
+//	//return errs[:len(news)]
+//	return errs[:it]
+//}
+
 // addTxsLocked attempts to queue a batch of transactions if they are valid.
 // The transaction pool lock must be held.
 func (pool *LegacyPool) addTxsLocked(txs []*types.Transaction, local bool) ([]error, *accountSet) {
 	dirty := newAccountSet(pool.signer)
 	errs := make([]error, len(txs))
+	//var errs [maxTxs]error
 	for i, tx := range txs {
 		replaced, err := pool.add(tx, local)
 		errs[i] = err
@@ -1022,6 +1177,7 @@ func (pool *LegacyPool) addTxsLocked(txs []*types.Transaction, local bool) ([]er
 		}
 	}
 	validTxMeter.Mark(int64(len(dirty.accounts)))
+	//return errs[:len(txs)], dirty
 	return errs, dirty
 }
 

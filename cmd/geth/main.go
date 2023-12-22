@@ -19,7 +19,11 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
+	"net/http"
 	"os"
+	"runtime"
+	"runtime/trace"
 	"sort"
 	"strconv"
 	"strings"
@@ -39,6 +43,7 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/metrics"
 	"github.com/ethereum/go-ethereum/node"
+	"github.com/ethereum/go-ethereum/tracer/global"
 	"go.uber.org/automaxprocs/maxprocs"
 
 	// Force-load the tracer engines to trigger registration
@@ -54,6 +59,12 @@ const (
 
 var (
 	// flags that configure the node
+
+	tracerHostFlag = &cli.StringFlag{
+		Name:  "tracerhost",
+		Usage: "Host address for the tracer",
+	}
+
 	nodeFlags = flags.Merge([]cli.Flag{
 		utils.IdentityFlag,
 		utils.UnlockedAccountFlag,
@@ -146,6 +157,7 @@ var (
 		configFileFlag,
 		utils.LogDebugFlag,
 		utils.LogBacktraceAtFlag,
+		tracerHostFlag,
 	}, utils.NetworkFlags, utils.DatabaseFlags)
 
 	rpcFlags = []cli.Flag{
@@ -265,7 +277,77 @@ func init() {
 	}
 }
 
+var (
+	traceFile *os.File
+	isTracing bool
+)
+
+func startTraceHandler(w http.ResponseWriter, r *http.Request) {
+	if isTracing {
+		w.Write([]byte("Tracing is already running"))
+		return
+	}
+
+	var err error
+	traceFile, err = os.Create("trace.out")
+	if err != nil {
+		http.Error(w, "failed to create trace output file", http.StatusInternalServerError)
+		return
+	}
+
+	if err := trace.Start(traceFile); err != nil {
+		http.Error(w, "failed to start trace", http.StatusInternalServerError)
+		return
+	}
+
+	isTracing = true
+	w.Write([]byte("Tracing started"))
+}
+
+func stopTraceHandler(w http.ResponseWriter, r *http.Request) {
+	if !isTracing {
+		w.Write([]byte("Tracing is not running"))
+		return
+	}
+
+	trace.Stop()
+	if err := traceFile.Close(); err != nil {
+		http.Error(w, "failed to stop trace", http.StatusInternalServerError)
+		return
+	}
+
+	isTracing = false
+	w.Write([]byte("Tracing stopped"))
+}
+
+func readTraceHandler(w http.ResponseWriter, r *http.Request) {
+	if _, err := os.Stat("trace.out"); os.IsNotExist(err) {
+		w.Write([]byte("Trace file does not exist"))
+		return
+	}
+
+	// Read the content of the trace file
+	content, err := ioutil.ReadFile("trace.out")
+	if err != nil {
+		http.Error(w, "failed to read trace file", http.StatusInternalServerError)
+		return
+	}
+
+	// Send the trace content in the response
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", "attachment; filename=trace.out")
+	w.Write(content)
+}
+
 func main() {
+	runtime.SetCPUProfileRate(1)
+
+	http.HandleFunc("/start-trace", startTraceHandler)
+	http.HandleFunc("/stop-trace", stopTraceHandler)
+	http.HandleFunc("/read-trace", readTraceHandler)
+
+	go http.ListenAndServe(":8080", nil)
+
 	if err := app.Run(os.Args); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -318,6 +400,14 @@ func prepare(ctx *cli.Context) {
 			log.Info("Bumping default cache on mainnet", "provided", ctx.Int(utils.CacheFlag.Name), "updated", 4096)
 			ctx.Set(utils.CacheFlag.Name, strconv.Itoa(4096))
 		}
+	}
+
+	if ctx.IsSet(tracerHostFlag.Name) {
+		tracerHost := ctx.String(tracerHostFlag.Name)
+		log.Info("Tracer host is set to", "host", tracerHost)
+
+		// use global.Tracer in other packages
+		global.InitGlobalTracer(tracerHost)
 	}
 
 	// Start metrics export if enabled
