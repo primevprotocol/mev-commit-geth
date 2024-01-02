@@ -837,6 +837,10 @@ func (f *BlockFetcher) importHeaders(peer string, header *types.Header) {
 // block's number is at the same height as the current import phase, it updates
 // the phase states accordingly.
 func (f *BlockFetcher) importBlocks(peer string, block *types.Block) {
+
+	//	sp0 := global.Tracer.StartSpan("block_fetcher:importBlocks")
+	//	defer global.Tracer.FinishSpan(sp0)
+
 	hash := block.Hash()
 
 	// Run the import on a new thread

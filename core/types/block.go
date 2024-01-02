@@ -29,6 +29,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/rlp"
+	"github.com/ethereum/go-ethereum/tracer/global"
+	"github.com/opentracing/opentracing-go"
 )
 
 // A BlockNonce is a 64-bit hash which proves (combined with the
@@ -220,13 +222,17 @@ type extblock struct {
 // The values of TxHash, UncleHash, ReceiptHash and Bloom in header
 // are ignored and set to values derived from the given txs, uncles
 // and receipts.
-func NewBlock(header *Header, txs []*Transaction, uncles []*Header, receipts []*Receipt, hasher TrieHasher) *Block {
+func NewBlock(header *Header, txs []*Transaction, uncles []*Header, receipts []*Receipt, hasher TrieHasher, span opentracing.Span) *Block {
+	sp2 := global.Tracer.StartSubSpan(span, "block:NewBlock")
+	defer global.Tracer.FinishSpan(sp2)
+
 	b := &Block{header: CopyHeader(header)}
 
 	// TODO: panic if len(txs) != len(receipts)
 	if len(txs) == 0 {
 		b.header.TxHash = EmptyTxsHash
 	} else {
+		// NOTE:@iowar If needed, span will be placed here
 		b.header.TxHash = DeriveSha(Transactions(txs), hasher)
 		b.transactions = make(Transactions, len(txs))
 		copy(b.transactions, txs)
@@ -235,6 +241,7 @@ func NewBlock(header *Header, txs []*Transaction, uncles []*Header, receipts []*
 	if len(receipts) == 0 {
 		b.header.ReceiptHash = EmptyReceiptsHash
 	} else {
+		// NOTE:@iowar If needed, span will be placed here
 		b.header.ReceiptHash = DeriveSha(Receipts(receipts), hasher)
 		b.header.Bloom = CreateBloom(receipts)
 	}
@@ -258,7 +265,7 @@ func NewBlock(header *Header, txs []*Transaction, uncles []*Header, receipts []*
 // The values of TxHash, UncleHash, ReceiptHash and Bloom in header are ignored and set to
 // values derived from the given txs, uncles and receipts.
 func NewBlockWithWithdrawals(header *Header, txs []*Transaction, uncles []*Header, receipts []*Receipt, withdrawals []*Withdrawal, hasher TrieHasher) *Block {
-	b := NewBlock(header, txs, uncles, receipts, hasher)
+	b := NewBlock(header, txs, uncles, receipts, hasher, nil)
 
 	if withdrawals == nil {
 		b.header.WithdrawalsHash = nil

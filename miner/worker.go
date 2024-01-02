@@ -38,6 +38,7 @@ import (
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/tracer/global"
 	"github.com/ethereum/go-ethereum/trie"
+	"github.com/opentracing/opentracing-go"
 )
 
 const (
@@ -511,6 +512,7 @@ func (w *worker) newWorkLoop(recommit time.Duration) {
 // the received event. It can support two modes: automatically generate task and
 // submit it or return task according to given parameters for various proposes.
 func (w *worker) mainLoop() {
+
 	defer w.wg.Done()
 	defer w.txsSub.Unsubscribe()
 	defer w.chainHeadSub.Unsubscribe()
@@ -523,12 +525,15 @@ func (w *worker) mainLoop() {
 	for {
 		select {
 		case req := <-w.newWorkCh:
-			w.commitWork(req.interrupt, req.timestamp)
+			sp0 := global.Tracer.StartSpan("worker:mainLoop:<-w.newWorkCh")
+			w.commitWork(req.interrupt, req.timestamp, sp0)
+			global.Tracer.FinishSpan(sp0)
 
 		case req := <-w.getWorkCh:
 			req.result <- w.generateWork(req.params)
 
 		case ev := <-w.txsCh:
+			sp0 := global.Tracer.StartSpan("worker:mainLoop:<-w.txsCh")
 			// Apply transactions to the pending state if we're not sealing
 			//
 			// Note all transactions received may not be continuous with transactions
@@ -537,6 +542,7 @@ func (w *worker) mainLoop() {
 			if !w.isRunning() && w.current != nil {
 				// If block is already full, abort
 				if gp := w.current.gasPool; gp != nil && gp.Gas() < params.TxGas {
+					global.Tracer.FinishSpan(sp0)
 					continue
 				}
 				txs := make(map[common.Address][]*txpool.LazyTransaction, len(ev.Txs))
@@ -560,17 +566,18 @@ func (w *worker) mainLoop() {
 				// Only update the snapshot if any new transactions were added
 				// to the pending block
 				if tcount != w.current.tcount {
-					w.updateSnapshot(w.current)
+					w.updateSnapshot(w.current, sp0)
 				}
 			} else {
 				// Special case, if the consensus engine is 0 period clique(dev mode),
 				// submit sealing work here since all empty submission will be rejected
 				// by clique. Of course the advance sealing(empty submission) is disabled.
 				if w.chainConfig.Clique != nil && w.chainConfig.Clique.PeriodMs == 0 {
-					w.commitWork(nil, time.Now().Unix())
+					w.commitWork(nil, time.Now().Unix(), nil)
 				}
 			}
 			w.newTxs.Add(int32(len(ev.Txs)))
+			global.Tracer.FinishSpan(sp0)
 
 		// System stopped
 		case <-w.exitCh:
@@ -727,7 +734,10 @@ func (w *worker) makeEnv(parent *types.Header, header *types.Header, coinbase co
 }
 
 // updateSnapshot updates pending snapshot block, receipts and state.
-func (w *worker) updateSnapshot(env *environment) {
+func (w *worker) updateSnapshot(env *environment, span opentracing.Span) {
+	sp1 := global.Tracer.StartSubSpan(span, "worker:updateSnapshot")
+	defer global.Tracer.FinishSpan(sp1)
+
 	w.snapshotMu.Lock()
 	defer w.snapshotMu.Unlock()
 
@@ -737,9 +747,13 @@ func (w *worker) updateSnapshot(env *environment) {
 		nil,
 		env.receipts,
 		trie.NewStackTrie(nil),
+		sp1,
 	)
 	w.snapshotReceipts = copyReceipts(env.receipts)
+
+	sp2 := global.Tracer.StartSubSpan(sp1, "worker:updateSnapshot:env.state.copy")
 	w.snapshotState = env.state.Copy()
+	global.Tracer.FinishSpan(sp2)
 }
 
 func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*types.Log, error) {
@@ -989,8 +1003,11 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 // fillTransactions retrieves the pending transactions from the txpool and fills them
 // into the given sealing block. The transaction selection and ordering strategy can
 // be customized with the plugin in the future.
-func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) error {
-	pending := w.eth.TxPool().Pending(true)
+func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment, span opentracing.Span) error {
+	sp2 := global.Tracer.StartSubSpan(span, "worker:fillTransactions")
+	defer global.Tracer.FinishSpan(sp2)
+
+	pending := w.eth.TxPool().Pending(true, sp2)
 
 	// Split the pending transactions into locals and remotes.
 	localTxs, remoteTxs := make(map[common.Address][]*txpool.LazyTransaction), pending
@@ -1032,7 +1049,7 @@ func (w *worker) generateWork(params *generateParams) *newPayloadResult {
 		})
 		defer timer.Stop()
 
-		err := w.fillTransactions(interrupt, work)
+		err := w.fillTransactions(interrupt, work, nil)
 		if errors.Is(err, errBlockInterruptedByTimeout) {
 			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.newpayloadTimeout))
 		}
@@ -1050,7 +1067,10 @@ func (w *worker) generateWork(params *generateParams) *newPayloadResult {
 
 // commitWork generates several new sealing tasks based on the parent block
 // and submit them to the sealer.
-func (w *worker) commitWork(interrupt *atomic.Int32, timestamp int64) {
+func (w *worker) commitWork(interrupt *atomic.Int32, timestamp int64, span opentracing.Span) {
+	sp1 := global.Tracer.StartSubSpan(span, "worker:commitWork")
+	defer global.Tracer.FinishSpan(sp1)
+
 	// Abort committing if node is still syncing
 	if w.syncing.Load() {
 		return
@@ -1074,7 +1094,7 @@ func (w *worker) commitWork(interrupt *atomic.Int32, timestamp int64) {
 		return
 	}
 	// Fill pending transactions from the txpool into the block.
-	err = w.fillTransactions(interrupt, work)
+	err = w.fillTransactions(interrupt, work, sp1)
 	switch {
 	case err == nil:
 		// The entire block is filled, decrease resubmit interval in case
@@ -1103,7 +1123,7 @@ func (w *worker) commitWork(interrupt *atomic.Int32, timestamp int64) {
 		return
 	}
 	// Submit the generated block for consensus sealing.
-	w.commit(work.copy(), w.fullTaskHook, true, start)
+	w.commit(work.copy(), w.fullTaskHook, true, start, sp1)
 
 	// Swap out the old work with the new one, terminating any leftover
 	// prefetcher processes in the mean time and starting a new one.
@@ -1117,7 +1137,10 @@ func (w *worker) commitWork(interrupt *atomic.Int32, timestamp int64) {
 // and commits new work if consensus engine is running.
 // Note the assumption is held that the mutation is allowed to the passed env, do
 // the deep copy first.
-func (w *worker) commit(env *environment, interval func(), update bool, start time.Time) error {
+func (w *worker) commit(env *environment, interval func(), update bool, start time.Time, span opentracing.Span) error {
+	sp2 := global.Tracer.StartSubSpan(span, "worker:commit")
+	defer global.Tracer.FinishSpan(sp2)
+
 	if w.isRunning() {
 		if interval != nil {
 			interval()
@@ -1146,7 +1169,7 @@ func (w *worker) commit(env *environment, interval func(), update bool, start ti
 		}
 	}
 	if update {
-		w.updateSnapshot(env)
+		w.updateSnapshot(env, sp2)
 	}
 	return nil
 }

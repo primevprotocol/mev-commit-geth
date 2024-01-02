@@ -315,7 +315,10 @@ func (p *TxPool) Add(txs []*types.Transaction, local bool, sync bool, span opent
 
 // Pending retrieves all currently processable transactions, grouped by origin
 // account and sorted by nonce.
-func (p *TxPool) Pending(enforceTips bool) map[common.Address][]*LazyTransaction {
+func (p *TxPool) Pending(enforceTips bool, span opentracing.Span) map[common.Address][]*LazyTransaction {
+	sp3 := global.Tracer.StartSubSpan(span, "txpool:Pending")
+	defer global.Tracer.FinishSpan(sp3)
+
 	txs := make(map[common.Address][]*LazyTransaction)
 	for _, subpool := range p.subpools {
 		for addr, set := range subpool.Pending(enforceTips) {

@@ -21,12 +21,13 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/metrics"
 	"io"
 	"math/big"
 	"math/rand"
 	"sync"
 	"time"
+
+	"github.com/ethereum/go-ethereum/metrics"
 
 	"github.com/ethereum/go-ethereum/accounts"
 	"github.com/ethereum/go-ethereum/common"
@@ -231,6 +232,10 @@ func (c *Clique) VerifyHeaders(chain consensus.ChainHeaderReader, headers []*typ
 	results := make(chan error, len(headers))
 
 	go func() {
+		// 15-20μs
+		//sp0 := global.Tracer.StartSpan("clique:VerifyHeaders")
+		//defer global.Tracer.FinishSpan(sp0)
+
 		for i, header := range headers {
 			err := c.verifyHeader(chain, header, headers[:i])
 
@@ -601,7 +606,7 @@ func (c *Clique) FinalizeAndAssemble(chain consensus.ChainHeaderReader, header *
 	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 
 	// Assemble and return the final block for sealing.
-	block := types.NewBlock(header, txs, nil, receipts, trie.NewStackTrie(nil))
+	block := types.NewBlock(header, txs, nil, receipts, trie.NewStackTrie(nil), nil) // edit
 
 	if metrics.Enabled {
 		metrics.GetOrRegisterGauge(blockSizeGaugeName, nil).Update(int64(block.Size()))
