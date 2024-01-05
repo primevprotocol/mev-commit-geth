@@ -19,7 +19,7 @@ show_usage() {
     echo ""
     echo "  init <L1 Router> <MEV-Commit Chain Router> <L1 Chain ID> <MEV-Commit Chain ID> <L1 URL> <MEV-Commit URL>"
     echo "    Initialize configuration with specified hyperlane router addresses, chain IDs, and URLs."
-    echo "    Example: $0 init 0x1234 0x5678 123 345 http://l1-url http://mev-commit-chain-url"
+    echo "    Example: $0 init 0xc20B3C7852FA81f36130313220890eA7Ea5F5B0e 0x4b2DC8A5C4da51f821390AbD2B6fe8122BC6fA97 11155111 17864 https://ethereum-sepolia.publicnode.com http://localhost:8545"
     echo ""
     echo "Options:"
     echo "  -y, --yes   Automatically answer 'yes' to all prompts"
@@ -123,6 +123,7 @@ bridge_to_mev_commit() {
             exit 1
         fi
     done
+    echo "Bridge operation completed successfully."
     exit 0
 }
 
@@ -165,11 +166,11 @@ bridge_to_l1() {
     cast send \
         --rpc-url $mev_commit_url \
         --private-key $private_key \
-        $SIDECHAIN_ROUTER "transferRemote(uint32,bytes32,uint256)" \
+        $mev_commit_chain_router "transferRemote(uint32,bytes32,uint256)" \
         $l1_chain_id \
         "0x000000000000000000000000a43b806d2f09ae94dfa38bc00d6f75426d274540" \
         "5000000000000000" \
-        --value 500000000000000wei
+        --value 5000000000000000wei
     
     # Block until dest balance is incremented
     max_retries=30
@@ -184,6 +185,7 @@ bridge_to_l1() {
             exit 1
         fi
     done
+    echo "Bridge operation completed successfully."
     exit 0
 }
 
