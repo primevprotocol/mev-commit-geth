@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Define the configuration file path
+config_file=".bridge_config"
+
 # Function to print usage information
 show_usage() {
     echo "Usage: $0 [command] [arguments] [options]"
@@ -21,7 +24,6 @@ show_usage() {
     echo "    Example: $0 bridge-to-mev-commit http://l1-url http://mev-commit-chain-url -y"
     echo ""
 }
-
 
 # Function for user confirmation
 confirm_operation() {
