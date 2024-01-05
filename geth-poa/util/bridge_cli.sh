@@ -1,10 +1,8 @@
 #!/bin/bash
 set -e
 
-# Define the configuration file path
 config_file=".bridge_config"
 
-# Function to print usage information
 show_usage() {
     echo "Usage: $0 [command] [arguments] [options]"
     echo ""
@@ -27,7 +25,6 @@ show_usage() {
     echo ""
 }
 
-# Function for user confirmation
 bridge_confirmation() {
     if [ "$skip_confirmation" = false ]; then
         local source_chain_name=$1
@@ -66,7 +63,6 @@ check_config_loaded() {
     done
 }
 
-# Bridge to MEV-Commit Chain
 # TODO: consolidate with bridge_to_l1 
 bridge_to_mev_commit() {
     local amount=$1
@@ -75,7 +71,6 @@ bridge_to_mev_commit() {
 
     check_config_loaded
 
-    # Verify amount is a valid number
     if ! [[ $amount =~ ^[0-9]+$ ]]; then
         echo "Error: Amount of wei is not a valid number."
         return 1
@@ -139,7 +134,6 @@ bridge_to_mev_commit() {
     exit 0
 }
 
-# Bridge to L1
 bridge_to_l1() {
     local amount=$1
     local dest_address=$2
@@ -147,7 +141,6 @@ bridge_to_l1() {
 
     check_config_loaded
 
-    # Verify amount is a valid number
     if ! [[ $amount =~ ^[0-9]+$ ]]; then
         echo "Error: Amount of wei is not a valid number."
         return 1
@@ -237,7 +230,7 @@ init_config() {
         fi
     fi
 
-    # Create JSON config and save to file
+    # Create JSON config file
     jq -n \
         --arg l1_router "$l1_router" \
         --arg mev_commit_chain_router "$mev_commit_chain_router" \
@@ -251,8 +244,7 @@ init_config() {
     echo "Configuration initialized and saved."
 }
 
-
-# Function to load configuration from JSON file
+# Loads configuration from JSON
 load_config() {
     if [ -f "$config_file" ]; then
         l1_router=$(jq -r '.l1_router' "$config_file")
@@ -267,20 +259,18 @@ load_config() {
     fi
 }
 
-
-# Check if the first argument is 'init'. If not, load configuration.
+# If first arg is not "init", load configuration.
 if [[ "$1" != "init" ]]; then
     load_config
 fi
 
-# Check if the last argument is --yes or -y
+# Check if last argument is --yes or -y, set flag accordingly
 skip_confirmation=false
 if [[ "${@: -1}" == "--yes" || "${@: -1}" == "-y" ]]; then
     skip_confirmation=true
     set -- "${@:1:$#-1}"  # Remove the last argument
 fi
 
-# Main command switch
 command=$1
 shift  # Shift to get the next set of parameters after the command
 
