@@ -9,11 +9,11 @@ show_usage() {
     echo "Usage: $0 [command] [arguments] [options]"
     echo ""
     echo "Commands:"
-    echo "  bridge-to-mev-commit <amount> <dest_account> <private_key>"
+    echo "  bridge-to-mev-commit <amount> <dest_addr> <private_key>"
     echo "    Bridge tokens to MEV-Commit Chain. Requires the amount to bridge, destination account, and private key."
     echo "    Example: $0 bridge-to-mev-commit 100 0x123... 0xABC..."
     echo ""
-    echo "  bridge-to-l1 <amount> <dest_account> <private_key>"
+    echo "  bridge-to-l1 <amount> <dest_addr> <private_key>"
     echo "    Bridge tokens to L1. Requires the amount to bridge, destination account, and private key."
     echo "    Example: $0 bridge-to-l1 100 0x456... 0xDEF..."
     echo ""
@@ -35,11 +35,11 @@ bridge_confirmation() {
         local source_chain_id=$3
         local dest_chain_id=$4
         local amount=$5
-        local dest_account=$6
+        local dest_address=$6
 
         echo "You are about to bridge from src $source_chain_name (ID: $source_chain_id), to dest $dest_chain_name (ID: $dest_chain_id)."
         echo "Amount to bridge: $amount"
-        echo "Destination account: $dest_account"
+        echo "Destination address: $dest_address"
         read -p "Are you sure you want to proceed? (y/n): " answer
         if [ "$answer" != "y" ]; then
             echo "Operation cancelled."
@@ -52,30 +52,59 @@ bridge_confirmation() {
 # Bridge to MEV-Commit Chain
 bridge_to_mev_commit() {
     local amount=$1
-    local dest_account=$2
+    local dest_address=$2
     local private_key=$3
 
     # Ensure configuration is loaded
-    if [ -z "$l1_router" ] || [ -z "$mev_commit_chain_id" ] || [ -z "$l1_url" ]; then
+    if [ -z "$l1_router" ] || [ -z "$mev_commit_chain_id" ] || [ -z "$l1_url" ] || [ -z "$mev_commit_url" ]; then
         echo "Error: Configuration not loaded. Run the init command first."
         exit 1
     fi
 
-    bridge_confirmation "L1" "MEV-Commit Chain" "$l1_chain_id" "$mev_commit_chain_id" "$amount" "$dest_account"
+    bridge_confirmation "L1" "MEV-Commit Chain" "$l1_chain_id" "$mev_commit_chain_id" "$amount" "$dest_address"
     echo "Bridging to MEV-Commit Chain..."
     echo "Amount: $amount"
-    echo "Destination Account: $dest_account"
+    echo "Destination Account: $dest_address"
     echo "Using L1 Router: $l1_router"
     echo "Using MEV-Commit Chain ID: $mev_commit_chain_id"
     echo "Using L1 URL: $l1_url"
     echo "private key: $private_key"
+
+    dest_init_balance=$(cast balance --rpc-url $mev_commit_url $dest_address)
+
+    cast call --rpc-url $l1_url $l1_router "quoteGasPayment(uint32)" $mev_commit_chain_id
+    # Above returns 1 wei, therefore ether value is 1 wei larger than value function argument
+    # TODO: Do addition here, also input address as bytes
+    cast send \
+        --rpc-url $l1_url \
+        --private-key $private_key \
+        $l1_router "transferRemote(uint32,bytes32,uint256)" \
+        $mev_commit_chain_id \
+        "0x000000000000000000000000a43b806d2f09ae94dfa38bc00d6f75426d274540" \
+        "5000000000000000" \
+        --value 5000000000000001wei
+
+    # Block until dest balance is incremented
+    max_retries=30
+    retry_count=0
+    while [ $(printf '%d' "$(cast balance --rpc-url "$mev_commit_url" "$dest_address")") -eq $(printf '%d' "$dest_init_balance") ]
+    do
+        echo "Waiting for destination balance to increment..."
+        sleep 5
+        retry_count=$((retry_count + 1))
+        if [ "$retry_count" -ge "$max_retries" ]; then
+            echo "Maximum retries reached"
+            exit 1
+        fi
+    done
+    exit 0
 }
 
 
 # Bridge to L1
 bridge_to_l1() {
     local amount=$1
-    local dest_account=$2
+    local dest_address=$2
     local private_key=$3
 
     # Ensure configuration has loaded neccessary vars
@@ -84,15 +113,43 @@ bridge_to_l1() {
         exit 1
     fi
 
-    bridge_confirmation "MEV-Commit Chain" "L1" "$mev_commit_chain_id" "$l1_chain_id" "$amount" "$dest_account"
+    bridge_confirmation "MEV-Commit Chain" "L1" "$mev_commit_chain_id" "$l1_chain_id" "$amount" "$dest_address"
     echo "Bridging to L1..."
     echo "Amount: $amount"
-    echo "Destination Account: $dest_account"
+    echo "Destination Addr: $dest_address"
     echo "Using MEV-Commit Chain Router: $mev_commit_chain_router"
     echo "Using L1 Chain ID: $l1_chain_id"
     echo "Using MEV-Commit Chain URL: $mev_commit_url"
     echo "private key: $private_key"
-    # Add specific logic for bridging to L1
+
+    dest_init_balance=$(cast balance --rpc-url $l1_url $dest_address)
+
+    cast call --rpc-url $mev_commit_url $mev_commit_chain_router "quoteGasPayment(uint32)" $l1_chain_id
+    # Above returns 0 wei, therefore ether value is same as function argument
+    # TODO: Do addition here, also input address as bytes
+    cast send \
+        --rpc-url $mev_commit_url \
+        --private-key $private_key \
+        $SIDECHAIN_ROUTER "transferRemote(uint32,bytes32,uint256)" \
+        $l1_chain_id \
+        "0x000000000000000000000000a43b806d2f09ae94dfa38bc00d6f75426d274540" \
+        "5000000000000000" \
+        --value 500000000000000wei
+    
+    # Block until dest balance is incremented
+    max_retries=30
+    retry_count=0
+    while [ $(printf '%d' "$(cast balance --rpc-url "$l1_url" "$dest_address")") -eq $(printf '%d' "$dest_init_balance") ]
+    do
+        echo "Waiting for destination balance to increment..."
+        sleep 5
+        retry_count=$((retry_count + 1))
+        if [ "$retry_count" -ge "$max_retries" ]; then
+            echo "Maximum retries reached"
+            exit 1
+        fi
+    done
+    exit 0
 }
 
 
