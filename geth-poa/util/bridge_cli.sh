@@ -37,7 +37,7 @@ bridge_confirmation() {
         local amount=$5
         local dest_account=$6
 
-        echo "You are about to bridge from $source_chain_name (ID: $source_chain_id) to $dest_chain_name (ID: $dest_chain_id)."
+        echo "You are about to bridge from src $source_chain_name (ID: $source_chain_id), to dest $dest_chain_name (ID: $dest_chain_id)."
         echo "Amount to bridge: $amount"
         echo "Destination account: $dest_account"
         read -p "Are you sure you want to proceed? (y/n): " answer
@@ -67,7 +67,8 @@ bridge_to_mev_commit() {
     echo "Destination Account: $dest_account"
     echo "Using L1 Router: $l1_router"
     echo "Using MEV-Commit Chain ID: $mev_commit_chain_id"
-    # Add specific logic for bridging to MEV-Commit Chain
+    echo "Using L1 URL: $l1_url"
+    echo "private key: $private_key"
 }
 
 
@@ -89,6 +90,8 @@ bridge_to_l1() {
     echo "Destination Account: $dest_account"
     echo "Using MEV-Commit Chain Router: $mev_commit_chain_router"
     echo "Using L1 Chain ID: $l1_chain_id"
+    echo "Using MEV-Commit Chain URL: $mev_commit_url"
+    echo "private key: $private_key"
     # Add specific logic for bridging to L1
 }
 
