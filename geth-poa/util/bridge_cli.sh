@@ -105,18 +105,20 @@ bridge_to_mev_commit() {
 
     dest_init_balance=$(cast balance --rpc-url $mev_commit_url $dest_address)
 
+    local dest_address_clean=${dest_address#0x} # Remove prefix
+    local padded_dest_address="0x000000000000000000000000$dest_address_clean"
+
     local gas_payment_hex=$(cast call --rpc-url $l1_url $l1_router "quoteGasPayment(uint32)" $mev_commit_chain_id)
     local gas_payment_hex_clean=${gas_payment_hex#0x} # Remove prefix
     local gas_payment_dec=$((16#$gas_payment_hex_clean))
     local total_amount_dec=$(($amount + $gas_payment_dec))
 
-    # TODO: input address as bytes
     cast send \
         --rpc-url $l1_url \
         --private-key $private_key \
         $l1_router "transferRemote(uint32,bytes32,uint256)" \
         $mev_commit_chain_id \
-        "0x000000000000000000000000a43b806d2f09ae94dfa38bc00d6f75426d274540" \
+        $padded_dest_address \
         $amount \
         --value $total_amount_dec"wei"
 
@@ -136,7 +138,6 @@ bridge_to_mev_commit() {
     echo "Bridge operation completed successfully."
     exit 0
 }
-
 
 # Bridge to L1
 bridge_to_l1() {
@@ -176,18 +177,20 @@ bridge_to_l1() {
 
     dest_init_balance=$(cast balance --rpc-url $l1_url $dest_address)
 
+    local dest_address_clean=${dest_address#0x} # Remove prefix
+    local padded_dest_address="0x000000000000000000000000$dest_address_clean"
+
     local gas_payment_hex=$(cast call --rpc-url $mev_commit_url $mev_commit_chain_router "quoteGasPayment(uint32)" $l1_chain_id)
     local gas_payment_hex_clean=${gas_payment_hex#0x} # Remove prefix
     local gas_payment_dec=$((16#$gas_payment_hex_clean))
     local total_amount_dec=$(($amount + $gas_payment_dec))
     
-    # TODO: input address as bytes
     cast send \
         --rpc-url $mev_commit_url \
         --private-key $private_key \
         $mev_commit_chain_router "transferRemote(uint32,bytes32,uint256)" \
         $l1_chain_id \
-        "0x000000000000000000000000a43b806d2f09ae94dfa38bc00d6f75426d274540" \
+        $padded_dest_address \
         $amount \
         --value $total_amount_dec"wei"
     
