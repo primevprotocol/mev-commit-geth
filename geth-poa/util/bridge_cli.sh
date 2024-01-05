@@ -9,11 +9,11 @@ show_usage() {
     echo "Usage: $0 [command] [arguments] [options]"
     echo ""
     echo "Commands:"
-    echo "  bridge-to-mev-commit <amount> <dest_addr> <private_key>"
+    echo "  bridge-to-mev-commit <amount in wei> <dest_addr> <private_key>"
     echo "    Bridge tokens to MEV-Commit Chain. Requires the amount to bridge, destination account, and private key."
     echo "    Example: $0 bridge-to-mev-commit 100 0x123... 0xABC..."
     echo ""
-    echo "  bridge-to-l1 <amount> <dest_addr> <private_key>"
+    echo "  bridge-to-l1 <amount in wei> <dest_addr> <private_key>"
     echo "    Bridge tokens to L1. Requires the amount to bridge, destination account, and private key."
     echo "    Example: $0 bridge-to-l1 100 0x456... 0xDEF..."
     echo ""
@@ -44,7 +44,7 @@ bridge_confirmation() {
         echo "You are about to bridge..."
         echo "From $source_chain_name (ID: $source_chain_id, URL: $source_url, Router: $source_router)"
         echo "To $dest_chain_name (ID: $dest_chain_id, URL: $dest_url, Router: $dest_router)"
-        echo "Amount to bridge: $amount"
+        echo "Amount to bridge: $amount wei"
         echo "Destination address: $dest_address"
         read -p "Are you sure you want to proceed with the bridging operation? (y/n): " answer
         if [ "$answer" != "y" ]; then
@@ -67,12 +67,19 @@ check_config_loaded() {
 }
 
 # Bridge to MEV-Commit Chain
+# TODO: consolidate with bridge_to_l1 
 bridge_to_mev_commit() {
     local amount=$1
     local dest_address=$2
     local private_key=$3
 
     check_config_loaded
+
+    # Verify amount is a valid number
+    if ! [[ $amount =~ ^[0-9]+$ ]]; then
+        echo "Error: Amount of wei is not a valid number."
+        return 1
+    fi
 
     bridge_confirmation \
         "L1" \
@@ -98,17 +105,20 @@ bridge_to_mev_commit() {
 
     dest_init_balance=$(cast balance --rpc-url $mev_commit_url $dest_address)
 
-    cast call --rpc-url $l1_url $l1_router "quoteGasPayment(uint32)" $mev_commit_chain_id
-    # Above returns 1 wei, therefore ether value is 1 wei larger than value function argument
-    # TODO: Do addition here, also input address as bytes
+    local gas_payment_hex=$(cast call --rpc-url $l1_url $l1_router "quoteGasPayment(uint32)" $mev_commit_chain_id)
+    local gas_payment_hex_clean=${gas_payment_hex#0x} # Remove prefix
+    local gas_payment_dec=$((16#$gas_payment_hex_clean))
+    local total_amount_dec=$(($amount + $gas_payment_dec))
+
+    # TODO: input address as bytes
     cast send \
         --rpc-url $l1_url \
         --private-key $private_key \
         $l1_router "transferRemote(uint32,bytes32,uint256)" \
         $mev_commit_chain_id \
         "0x000000000000000000000000a43b806d2f09ae94dfa38bc00d6f75426d274540" \
-        "5000000000000000" \
-        --value 5000000000000001wei
+        $amount \
+        --value $total_amount_dec"wei"
 
     # Block until dest balance is incremented
     max_retries=30
@@ -136,6 +146,12 @@ bridge_to_l1() {
 
     check_config_loaded
 
+    # Verify amount is a valid number
+    if ! [[ $amount =~ ^[0-9]+$ ]]; then
+        echo "Error: Amount of wei is not a valid number."
+        return 1
+    fi
+
     bridge_confirmation \
         "MEV-Commit Chain" \
         "L1" \
@@ -160,17 +176,20 @@ bridge_to_l1() {
 
     dest_init_balance=$(cast balance --rpc-url $l1_url $dest_address)
 
-    cast call --rpc-url $mev_commit_url $mev_commit_chain_router "quoteGasPayment(uint32)" $l1_chain_id
-    # Above returns 0 wei, therefore ether value is same as function argument
-    # TODO: Do addition here, also input address as bytes
+    local gas_payment_hex=$(cast call --rpc-url $mev_commit_url $mev_commit_chain_router "quoteGasPayment(uint32)" $l1_chain_id)
+    local gas_payment_hex_clean=${gas_payment_hex#0x} # Remove prefix
+    local gas_payment_dec=$((16#$gas_payment_hex_clean))
+    local total_amount_dec=$(($amount + $gas_payment_dec))
+    
+    # TODO: input address as bytes
     cast send \
         --rpc-url $mev_commit_url \
         --private-key $private_key \
         $mev_commit_chain_router "transferRemote(uint32,bytes32,uint256)" \
         $l1_chain_id \
         "0x000000000000000000000000a43b806d2f09ae94dfa38bc00d6f75426d274540" \
-        "5000000000000000" \
-        --value 5000000000000000wei
+        $amount \
+        --value $total_amount_dec"wei"
     
     # Block until dest balance is incremented
     max_retries=30
