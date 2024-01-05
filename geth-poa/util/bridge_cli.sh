@@ -26,7 +26,7 @@ show_usage() {
 }
 
 # Function for user confirmation
-confirm_operation() {
+bridge_confirmation() {
     if [ "$skip_confirmation" = false ]; then
         local source_chain=$1
         local destination_chain=$2
@@ -46,15 +46,30 @@ confirm_operation() {
 
 # Bridge to MEV-Commit Chain
 bridge_to_mev_commit() {
-    confirm_operation "L1" "MEV-Commit Chain" "$1" "$2"
+    local mev_commit_chain_id="17864"
+    # Ensure configuration is loaded
+    if [ -z "$mev_commit_chain_router" ] || [ -z "$mev_commit_chain_id" ]; then
+        echo "Error: Configuration not loaded. Run the init command first."
+        exit 1
+    fi
+    bridge_confirmation "L1" "MEV-Commit Chain" "$1" "$2"
     echo "Bridging to MEV-Commit Chain..."
+    echo "Using MEV-Commit Chain Router: $mev_commit_chain_router"
+    echo "Using MEV-Commit Chain ID: $mev_commit_chain_id"
     # Add specific logic for bridging to MEV-Commit Chain
 }
 
 # Bridge to L1
 bridge_to_l1() {
-    confirm_operation "MEV-Commit Chain" "L1" "$1" "$2"
+    # Ensure configuration is loaded
+    if [ -z "$l1_router" ] || [ -z "$l1_chain_id" ]; then
+        echo "Error: Configuration not loaded. Run the init command first."
+        exit 1
+    fi
+    bridge_confirmation "MEV-Commit Chain" "L1" "$1" "$2"
     echo "Bridging to L1..."
+    echo "Using L1 Router: $l1_router"
+    echo "Using L1 Chain ID: $l1_chain_id"
     # Add specific logic for bridging to L1
 }
 
@@ -100,6 +115,11 @@ load_config() {
         exit 1
     fi
 }
+
+# Check if the first argument is 'init'. If not, load configuration.
+if [[ "$1" != "init" ]]; then
+    load_config
+fi
 
 # Parse global options for --yes
 skip_confirmation=false
