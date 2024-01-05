@@ -39,11 +39,11 @@ bridge_confirmation() {
         local source_router=$7
         local dest_router=$8
         local amount=$9
-        local dest_address=$10
+        local dest_address=${10} # Arguments after $9 must be accessed with braces
 
-        echo "Bridge Confirmation:"
-        echo "From Chain: $source_chain_name (ID: $source_chain_id, URL: $source_url, Router: $source_router)"
-        echo "To Chain: $dest_chain_name (ID: $dest_chain_id, URL: $dest_url, Router: $dest_router)"
+        echo "You are about to bridge..."
+        echo "From $source_chain_name (ID: $source_chain_id, URL: $source_url, Router: $source_router)"
+        echo "To $dest_chain_name (ID: $dest_chain_id, URL: $dest_url, Router: $dest_router)"
         echo "Amount to bridge: $amount"
         echo "Destination address: $dest_address"
         read -p "Are you sure you want to proceed with the bridging operation? (y/n): " answer
