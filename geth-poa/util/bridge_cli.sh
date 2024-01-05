@@ -8,14 +8,14 @@ show_usage() {
     echo ""
     echo "Commands:"
     echo "  bridge-to-mev-commit <amount in wei> <dest_addr> <private_key>"
-    echo "    Bridge tokens to MEV-Commit Chain. Requires the amount to bridge, destination account, and private key."
+    echo "    Bridge tokens to mev-commit chain. Requires the amount to bridge, destination account, and private key."
     echo "    Example: $0 bridge-to-mev-commit 100 0x123... 0xABC..."
     echo ""
     echo "  bridge-to-l1 <amount in wei> <dest_addr> <private_key>"
     echo "    Bridge tokens to L1. Requires the amount to bridge, destination account, and private key."
     echo "    Example: $0 bridge-to-l1 100 0x456... 0xDEF..."
     echo ""
-    echo "  init <L1 Router> <MEV-Commit Chain Router> <L1 Chain ID> <MEV-Commit Chain ID> <L1 URL> <MEV-Commit URL>"
+    echo "  init <L1 Router> <mev-commit chain Router> <L1 Chain ID> <mev-commit chain ID> <L1 URL> <MEV-Commit URL>"
     echo "    Initialize configuration with specified hyperlane router addresses, chain IDs, and URLs."
     echo "    Example: $0 init 0xc20B3C7852FA81f36130313220890eA7Ea5F5B0e 0x4b2DC8A5C4da51f821390AbD2B6fe8122BC6fA97 11155111 17864 https://ethereum-sepolia.publicnode.com http://localhost:8545"
     echo ""
@@ -78,7 +78,7 @@ bridge_to_mev_commit() {
 
     bridge_confirmation \
         "L1" \
-        "MEV-Commit Chain" \
+        "mev-commit chain" \
         "$l1_chain_id" \
         "$mev_commit_chain_id" \
         "$l1_url" \
@@ -88,13 +88,13 @@ bridge_to_mev_commit() {
         "$amount" \
         "$dest_address"
 
-    echo "Bridging to MEV-Commit Chain..."
+    echo "Bridging to mev-commit chain..."
     echo "Amount: $amount"
     echo "Destination Address: $dest_address"
     echo "Using L1 Router: $l1_router"
-    echo "Using MEV-Commit Chain Router: $mev_commit_chain_router"
+    echo "Using mev-commit chain Router: $mev_commit_chain_router"
     echo "L1 Chain ID: $l1_chain_id"
-    echo "MEV-Commit Chain ID: $mev_commit_chain_id"
+    echo "mev-commit chain ID: $mev_commit_chain_id"
     echo "L1 URL: $l1_url"
     echo "MEV-Commit URL: $mev_commit_url"
 
@@ -147,7 +147,7 @@ bridge_to_l1() {
     fi
 
     bridge_confirmation \
-        "MEV-Commit Chain" \
+        "mev-commit chain" \
         "L1" \
         "$mev_commit_chain_id" \
         "$l1_chain_id" \
@@ -161,9 +161,9 @@ bridge_to_l1() {
     echo "Bridging to L1..."
     echo "Amount: $amount"
     echo "Destination Address: $dest_address"
-    echo "Using MEV-Commit Chain Router: $mev_commit_chain_router"
+    echo "Using mev-commit chain Router: $mev_commit_chain_router"
     echo "Using L1 Router: $l1_router"
-    echo "MEV-Commit Chain ID: $mev_commit_chain_id"
+    echo "mev-commit chain ID: $mev_commit_chain_id"
     echo "L1 Chain ID: $l1_chain_id"
     echo "MEV-Commit URL: $mev_commit_url"
     echo "L1 URL: $l1_url"
@@ -218,9 +218,9 @@ init_config() {
     if [ "$skip_confirmation" = false ]; then
         echo "You are about to initialize the configuration with the following settings:"
         echo "L1 Router: $l1_router"
-        echo "MEV-Commit Chain Router: $mev_commit_chain_router"
+        echo "mev-commit chain Router: $mev_commit_chain_router"
         echo "L1 Chain ID: $l1_chain_id"
-        echo "MEV-Commit Chain ID: $mev_commit_chain_id"
+        echo "mev-commit chain ID: $mev_commit_chain_id"
         echo "L1 URL: $l1_url"
         echo "MEV-Commit URL: $mev_commit_url"
         read -p "Are you sure you want to proceed? (y/n): " answer
@@ -285,7 +285,7 @@ case "$command" in
         ;;
     bridge-to-mev-commit)
         if [ $# -ne 3 ]; then
-            echo "Error: Incorrect number of arguments for bridging to MEV-Commit Chain."
+            echo "Error: Incorrect number of arguments for bridging to mev-commit chain."
             show_usage
             exit 1
         fi
