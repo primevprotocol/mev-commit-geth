@@ -34,13 +34,19 @@ bridge_confirmation() {
         local dest_chain_name=$2
         local source_chain_id=$3
         local dest_chain_id=$4
-        local amount=$5
-        local dest_address=$6
+        local source_url=$5
+        local dest_url=$6
+        local source_router=$7
+        local dest_router=$8
+        local amount=$9
+        local dest_address=$10
 
-        echo "You are about to bridge from src $source_chain_name (ID: $source_chain_id), to dest $dest_chain_name (ID: $dest_chain_id)."
+        echo "Bridge Confirmation:"
+        echo "From Chain: $source_chain_name (ID: $source_chain_id, URL: $source_url, Router: $source_router)"
+        echo "To Chain: $dest_chain_name (ID: $dest_chain_id, URL: $dest_url, Router: $dest_router)"
         echo "Amount to bridge: $amount"
         echo "Destination address: $dest_address"
-        read -p "Are you sure you want to proceed? (y/n): " answer
+        read -p "Are you sure you want to proceed with the bridging operation? (y/n): " answer
         if [ "$answer" != "y" ]; then
             echo "Operation cancelled."
             exit 1
@@ -48,6 +54,17 @@ bridge_confirmation() {
     fi
 }
 
+check_config_loaded() {
+    local config_vars=("l1_router" "mev_commit_chain_router" "l1_chain_id" "mev_commit_chain_id" "l1_url" "mev_commit_url")
+
+    for var in "${config_vars[@]}"; do
+        if [ -z "${!var}" ]; then
+            echo "Error: Configuration for '$var' not loaded."
+            echo "Please run the init command to set up the necessary configuration."
+            exit 1
+        fi
+    done
+}
 
 # Bridge to MEV-Commit Chain
 bridge_to_mev_commit() {
@@ -55,20 +72,29 @@ bridge_to_mev_commit() {
     local dest_address=$2
     local private_key=$3
 
-    # Ensure configuration is loaded
-    if [ -z "$l1_router" ] || [ -z "$mev_commit_chain_id" ] || [ -z "$l1_url" ] || [ -z "$mev_commit_url" ]; then
-        echo "Error: Configuration not loaded. Run the init command first."
-        exit 1
-    fi
+    check_config_loaded
 
-    bridge_confirmation "L1" "MEV-Commit Chain" "$l1_chain_id" "$mev_commit_chain_id" "$amount" "$dest_address"
+    bridge_confirmation \
+        "L1" \
+        "MEV-Commit Chain" \
+        "$l1_chain_id" \
+        "$mev_commit_chain_id" \
+        "$l1_url" \
+        "$mev_commit_url" \
+        "$l1_router" \
+        "$mev_commit_chain_router" \
+        "$amount" \
+        "$dest_address"
+
     echo "Bridging to MEV-Commit Chain..."
     echo "Amount: $amount"
-    echo "Destination Account: $dest_address"
+    echo "Destination Address: $dest_address"
     echo "Using L1 Router: $l1_router"
-    echo "Using MEV-Commit Chain ID: $mev_commit_chain_id"
-    echo "Using L1 URL: $l1_url"
-    echo "private key: $private_key"
+    echo "Using MEV-Commit Chain Router: $mev_commit_chain_router"
+    echo "L1 Chain ID: $l1_chain_id"
+    echo "MEV-Commit Chain ID: $mev_commit_chain_id"
+    echo "L1 URL: $l1_url"
+    echo "MEV-Commit URL: $mev_commit_url"
 
     dest_init_balance=$(cast balance --rpc-url $mev_commit_url $dest_address)
 
@@ -107,20 +133,29 @@ bridge_to_l1() {
     local dest_address=$2
     local private_key=$3
 
-    # Ensure configuration has loaded neccessary vars
-    if [ -z "$mev_commit_chain_router" ] || [ -z "$l1_chain_id" ] || [ -z "$mev_commit_url" ]; then
-        echo "Error: Configuration not loaded. Run the init command first."
-        exit 1
-    fi
+    check_config_loaded
 
-    bridge_confirmation "MEV-Commit Chain" "L1" "$mev_commit_chain_id" "$l1_chain_id" "$amount" "$dest_address"
+    bridge_confirmation \
+        "MEV-Commit Chain" \
+        "L1" \
+        "$mev_commit_chain_id" \
+        "$l1_chain_id" \
+        "$mev_commit_url" \
+        "$l1_url" \
+        "$mev_commit_chain_router" \
+        "$l1_router" \
+        "$amount" \
+        "$dest_address"
+
     echo "Bridging to L1..."
     echo "Amount: $amount"
-    echo "Destination Addr: $dest_address"
+    echo "Destination Address: $dest_address"
     echo "Using MEV-Commit Chain Router: $mev_commit_chain_router"
-    echo "Using L1 Chain ID: $l1_chain_id"
-    echo "Using MEV-Commit Chain URL: $mev_commit_url"
-    echo "private key: $private_key"
+    echo "Using L1 Router: $l1_router"
+    echo "MEV-Commit Chain ID: $mev_commit_chain_id"
+    echo "L1 Chain ID: $l1_chain_id"
+    echo "MEV-Commit URL: $mev_commit_url"
+    echo "L1 URL: $l1_url"
 
     dest_init_balance=$(cast balance --rpc-url $l1_url $dest_address)
 
