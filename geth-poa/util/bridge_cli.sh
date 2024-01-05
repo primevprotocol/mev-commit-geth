@@ -6,8 +6,8 @@ show_usage() {
     echo "Usage: $0 [command] [arguments] [options]"
     echo ""
     echo "Commands:"
-    echo "  bridge-to-mev-commit [Sepolia URL] [MEV-Commit Chain URL] Bridge tokens to MEV-Commit Chain"
-    echo "  bridge-to-sepolia [MEV-Commit Chain URL] [Sepolia URL] Bridge tokens to Sepolia"
+    echo "  bridge-to-mev-commit [L1 URL] [MEV-Commit Chain URL] Bridge tokens to MEV-Commit Chain"
+    echo "  bridge-to-l1 [MEV-Commit Chain URL] [L1 URL] Bridge tokens to L1"
     echo ""
     echo "Options:"
     echo "  -y, --yes   Automatically answer 'yes' to all prompts"
@@ -35,16 +35,16 @@ confirm_operation() {
 
 # Bridge to MEV-Commit Chain
 bridge_to_mev_commit() {
-    confirm_operation "Sepolia" "MEV-Commit Chain" "$1" "$2"
+    confirm_operation "L1" "MEV-Commit Chain" "$1" "$2"
     echo "Bridging to MEV-Commit Chain..."
     # Add specific logic for bridging to MEV-Commit Chain
 }
 
-# Bridge to Sepolia
-bridge_to_sepolia() {
-    confirm_operation "MEV-Commit Chain" "Sepolia" "$1" "$2"
-    echo "Bridging to Sepolia..."
-    # Add specific logic for bridging to Sepolia
+# Bridge to L1
+bridge_to_l1() {
+    confirm_operation "MEV-Commit Chain" "L1" "$1" "$2"
+    echo "Bridging to L1..."
+    # Add specific logic for bridging to L1
 }
 
 # Parse global options for --yes
@@ -65,13 +65,13 @@ case "$command" in
         fi
         bridge_to_mev_commit "$2" "$3"
         ;;
-    bridge-to-sepolia)
+    bridge-to-l1)
         if [ $# -ne 3 ]; then
-            echo "Error: Incorrect number of arguments for bridging to Sepolia."
+            echo "Error: Incorrect number of arguments for bridging to L1."
             show_usage
             exit 1
         fi
-        bridge_to_sepolia "$2" "$3"
+        bridge_to_l1 "$2" "$3"
         ;;
     -h|--help)
         show_usage
