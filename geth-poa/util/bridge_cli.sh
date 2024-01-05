@@ -154,11 +154,11 @@ if [[ "$1" != "init" ]]; then
     load_config
 fi
 
-# Parse global options for --yes
+# Check if the last argument is --yes or -y
 skip_confirmation=false
-if [[ "$4" == "-y" || "$4" == "--yes" ]]; then
+if [[ "${@: -1}" == "--yes" || "${@: -1}" == "-y" ]]; then
     skip_confirmation=true
-    set -- "$1" "$2" "$3" # Rebuild positional parameters without the --yes flag
+    set -- "${@:1:$#-1}"  # Remove the last argument
 fi
 
 # Main command switch
