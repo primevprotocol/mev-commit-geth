@@ -72,8 +72,8 @@ func init() {
 	cliqueChainConfig = new(params.ChainConfig)
 	*cliqueChainConfig = *params.TestChainConfig
 	cliqueChainConfig.Clique = &params.CliqueConfig{
-		Period: 10,
-		Epoch:  30000,
+		PeriodMs: 10000,
+		Epoch:    30000,
 	}
 
 	signer := types.LatestSigner(params.TestChainConfig)
