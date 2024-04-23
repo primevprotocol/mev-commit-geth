@@ -30,7 +30,7 @@ import (
 	"github.com/ethereum/go-ethereum/event"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ethereum/go-ethereum/rlp"
-	"github.com/ethereum/go-ethereum/trie"
+	"github.com/ethereum/go-ethereum/triedb"
 )
 
 // CurrentHeader retrieves the current head header of the canonical chain. The
@@ -266,6 +266,9 @@ func (bc *BlockChain) GetAncestor(hash common.Hash, number, ancestor uint64, max
 // transaction indexing is already finished. The transaction is not existent
 // from the node's perspective.
 func (bc *BlockChain) GetTransactionLookup(hash common.Hash) (*rawdb.LegacyTxLookupEntry, *types.Transaction, error) {
+	bc.txLookupLock.RLock()
+	defer bc.txLookupLock.RUnlock()
+
 	// Short circuit if the txlookup already in the cache, retrieve otherwise
 	if item, exist := bc.txLookupCache.Get(hash); exist {
 		return item.lookup, item.transaction, nil
@@ -406,7 +409,7 @@ func (bc *BlockChain) TxIndexProgress() (TxIndexProgress, error) {
 }
 
 // TrieDB retrieves the low level trie database used for data storage.
-func (bc *BlockChain) TrieDB() *trie.Database {
+func (bc *BlockChain) TrieDB() *triedb.Database {
 	return bc.triedb
 }
 

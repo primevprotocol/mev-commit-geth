@@ -19,6 +19,7 @@ package engine
 import (
 	"fmt"
 	"math/big"
+	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -132,12 +133,7 @@ func (b PayloadID) Version() PayloadVersion {
 
 // Is returns whether the identifier matches any of provided payload versions.
 func (b PayloadID) Is(versions ...PayloadVersion) bool {
-	for _, v := range versions {
-		if v == b.Version() {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(versions, b.Version())
 }
 
 func (b PayloadID) String() string {
@@ -302,4 +298,22 @@ func BlockToExecutableData(block *types.Block, fees *big.Int, sidecars []*types.
 type ExecutionPayloadBodyV1 struct {
 	TransactionData []hexutil.Bytes     `json:"transactions"`
 	Withdrawals     []*types.Withdrawal `json:"withdrawals"`
+}
+
+// Client identifiers to support ClientVersionV1.
+const (
+	ClientCode = "GE"
+	ClientName = "go-ethereum"
+)
+
+// ClientVersionV1 contains information which identifies a client implementation.
+type ClientVersionV1 struct {
+	Code    string `json:"code"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Commit  string `json:"commit"`
+}
+
+func (v *ClientVersionV1) String() string {
+	return fmt.Sprintf("%s-%s-%s-%s", v.Code, v.Name, v.Version, v.Commit)
 }
