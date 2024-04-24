@@ -30,11 +30,21 @@ archives:
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386
       {{- else }}{{ .Arch }}
-      {{ end }}
+      {{- end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
     format_overrides:
       - goos: windows
         format: zip
+    files:
+      - src: ./external/geth/geth-poa/entrypoint.sh
+        dst: ./
+        strip_parent: true
+      - src: ./external/geth/geth-poa/genesis.json
+        dst: ./
+        strip_parent: true
+      - src: ./external/geth/geth-poa/util/deploy_create2.sh
+        dst: ./
+        strip_parent: true
 
 checksum:
   name_template: >-
