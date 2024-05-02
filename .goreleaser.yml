@@ -1,6 +1,8 @@
 version: 1
 
-project_name: mev-commit-geth
+before:
+  hooks:
+    - go mod tidy
 
 builds:
   - env:
@@ -17,49 +19,23 @@ builds:
     ignore:
       - goos: windows
         goarch: arm64
-    dir: ./external/geth
     main: ./cmd/geth
-    binary: "{{ .ProjectName }}"
+    binary: geth
 
 archives:
   - format: tar.gz
+    # This name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
-      {{- .Binary }}_
-      {{- if .IsSnapshot }}{{ .ShortCommit }}
-      {{- else }}{{ .Version }}
-      {{ end }}
-      {{- if .Env.DIRTY_SUFFIX }}{{ .Env.DIRTY_SUFFIX }}{{ end }}_
+      {{ .ProjectName }}_
       {{- title .Os }}_
       {{- if eq .Arch "amd64" }}x86_64
       {{- else if eq .Arch "386" }}i386
-      {{- else }}{{ .Arch }}
-      {{- end }}
+      {{- else }}{{ .Arch }}{{ end }}
       {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # Use zip for windows archives.
     format_overrides:
       - goos: windows
         format: zip
-    files:
-      - src: ./external/geth/geth-poa/entrypoint.sh
-        dst: ./
-        strip_parent: true
-      - src: ./external/geth/geth-poa/genesis.json
-        dst: ./
-        strip_parent: true
-      - src: ./external/geth/geth-poa/util/deploy_create2.sh
-        dst: ./
-        strip_parent: true
-      - src: ./external/geth/geth-poa/signer-node*/**/*
-        dst: ./
-        strip_parent: false
-
-checksum:
-  name_template: >-
-    {{ .ProjectName }}_
-    {{- if .IsSnapshot }}{{ .ShortCommit }}
-    {{- else }}{{ .Version }}
-    {{- end }}
-    {{- if .Env.DIRTY_SUFFIX }}{{ .Env.DIRTY_SUFFIX }}{{ end -}}
-    _checksums.txt
 
 changelog:
   sort: asc
