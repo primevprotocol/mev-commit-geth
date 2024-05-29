@@ -1008,6 +1008,7 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 // be customized with the plugin in the future.
 func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) error {
 	pending := w.eth.TxPool().Pending(true)
+	log.Info("Pending transactions retrieved in fillTransactions", "count", len(pending))
 
 	// Split the pending transactions into locals and remotes.
 	localTxs, remoteTxs := make(map[common.Address][]*txpool.LazyTransaction), pending
@@ -1040,8 +1041,10 @@ func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) err
 
 // generateWork generates a sealing block based on the given parameters.
 func (w *worker) generateWork(params *generateParams) *newPayloadResult {
+	log.Info("Starting to generate work for sealing block", "params", params)
 	work, err := w.prepareWork(params)
 	if err != nil {
+		log.Error("Failed to prepare work for sealing", "error", err)
 		return &newPayloadResult{err: err}
 	}
 	defer work.discard()
@@ -1050,18 +1053,29 @@ func (w *worker) generateWork(params *generateParams) *newPayloadResult {
 		interrupt := new(atomic.Int32)
 		timer := time.AfterFunc(w.newpayloadTimeout, func() {
 			interrupt.Store(commitInterruptTimeout)
+			log.Info("Transaction processing interrupted due to timeout", "timeout", w.newpayloadTimeout)
 		})
 		defer timer.Stop()
 
 		err := w.fillTransactions(interrupt, work)
 		if errors.Is(err, errBlockInterruptedByTimeout) {
-			log.Warn("Block building is interrupted", "allowance", common.PrettyDuration(w.newpayloadTimeout))
+			log.Warn("Block building is interrupted by timeout", "allowance", common.PrettyDuration(w.newpayloadTimeout))
+		} else if err != nil {
+			log.Error("Error while filling transactions into block", "error", err)
+		} else {
+			log.Info("Transactions successfully filled into block")
 		}
+	} else {
+		log.Info("No transactions to process as per parameters")
 	}
+
+	log.Info("Finalizing and assembling block")
 	block, err := w.engine.FinalizeAndAssemble(w.chain, work.header, work.state, work.txs, nil, work.receipts, params.withdrawals)
 	if err != nil {
+		log.Error("Failed to finalize and assemble block", "error", err)
 		return &newPayloadResult{err: err}
 	}
+	log.Info("Block successfully finalized and assembled", "blockHash", block.Hash())
 	return &newPayloadResult{
 		block:    block,
 		fees:     totalFees(block, work.receipts),
