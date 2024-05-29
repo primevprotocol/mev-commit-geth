@@ -750,6 +750,9 @@ func (w *worker) updateSnapshot(env *environment) {
 	w.snapshotState = env.state.Copy()
 }
 
+// This function commits a transaction to the EVM.
+// If the transaction type is BlobTxType, it calls the commitBlobTransaction function.
+// Otherwise, it applies the transaction and updates the EVM state.
 func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*types.Log, error) {
 	if tx.Type() == types.BlobTxType {
 		return w.commitBlobTransaction(env, tx)
@@ -762,7 +765,6 @@ func (w *worker) commitTransaction(env *environment, tx *types.Transaction) ([]*
 	env.receipts = append(env.receipts, receipt)
 	return receipt.Logs, nil
 }
-
 func (w *worker) commitBlobTransaction(env *environment, tx *types.Transaction) ([]*types.Log, error) {
 	sc := tx.BlobTxSidecar()
 	if sc == nil {
@@ -793,14 +795,20 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction) (*typ
 		snap = env.state.Snapshot()
 		gp   = env.gasPool.Gas()
 	)
+	log.Info("Applying transaction", "tx_hash", tx.Hash(), "coinbase", env.coinbase, "gas_available", gp)
 	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, *w.chain.GetVMConfig())
 	if err != nil {
+		log.Error("Transaction application failed", "tx_hash", tx.Hash(), "error", err)
 		env.state.RevertToSnapshot(snap)
 		env.gasPool.SetGas(gp)
+	} else {
+		log.Info("Transaction applied successfully", "tx_hash", tx.Hash(), "gas_used", env.header.GasUsed)
 	}
 	return receipt, err
 }
 
+// This function commits transactions by processing them in order of price and nonce.
+// It handles transaction execution, gas and tip calculations, and interruption handling.
 func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAndNonce, interrupt *atomic.Int32, minTip *big.Int) error {
 	gasLimit := env.header.GasLimit
 	if env.gasPool == nil {
@@ -827,7 +835,7 @@ func (w *worker) commitTransactions(env *environment, txs *transactionsByPriceAn
 		}
 		// If we don't have enough space for the next transaction, skip the account.
 		if env.gasPool.Gas() < ltx.Gas {
-			log.Trace("Not enough gas left for transaction", "hash", ltx.Hash, "left", env.gasPool.Gas(), "needed", ltx.Gas)
+			log.Info("Not enough gas left for transaction", "hash", ltx.Hash, "left", env.gasPool.Gas(), "needed", ltx.Gas)
 			txs.Pop()
 			continue
 		}

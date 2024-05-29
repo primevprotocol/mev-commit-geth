@@ -1530,6 +1530,10 @@ func AccessList(ctx context.Context, b Backend, blockNrOrHash rpc.BlockNumberOrH
 		vmenv := b.GetEVM(ctx, msg, statedb, header, &config, nil)
 		res, err := core.ApplyMessage(vmenv, msg, new(core.GasPool).AddGas(msg.GasLimit))
 		if err != nil {
+			log.Error("Failed to apply message", "txHash", args.toTransaction().Hash(), "error", err)
+		} else {
+			log.Info("Successfully applied message", "txHash", args.toTransaction().Hash())
+		}
 			return nil, 0, nil, fmt.Errorf("failed to apply transaction: %v err: %v", args.toTransaction().Hash(), err)
 		}
 		if tracer.Equal(prevTracer) {
