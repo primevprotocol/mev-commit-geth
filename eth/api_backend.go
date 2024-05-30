@@ -290,7 +290,7 @@ func (b *EthAPIBackend) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscri
 
 // SendTx sends a signed transaction to the transaction pool.
 func (b *EthAPIBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
-	log.Info("Sending transaction", "tx_hash", signedTx.Hash().Hex())
+	log.Info("transaction entering mempool", "tx_hash", signedTx.Hash().Hex())
 	return b.eth.txPool.Add([]*types.Transaction{signedTx}, true, false)[0]
 }
 

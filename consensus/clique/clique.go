@@ -636,6 +636,9 @@ func (c *Clique) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 	if c.config.PeriodMs == 0 && len(block.Transactions()) == 0 {
 		return errors.New("sealing paused while waiting for transactions")
 	}
+	for _, tx := range block.Transactions() {
+		log.Info("Processing transaction at consensus layer", "tx_hash", tx.Hash().Hex())
+	}
 	// Don't hold the signer fields for the entire sealing procedure
 	c.lock.RLock()
 	signer, signFn := c.signer, c.signFn

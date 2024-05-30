@@ -545,10 +545,12 @@ func (w *worker) mainLoop() {
 			if !w.isRunning() && w.current != nil {
 				// If block is already full, abort
 				if gp := w.current.gasPool; gp != nil && gp.Gas() < params.TxGas {
+					log.Info("Gas pool is full, skipping transaction", "gas", gp.Gas())
 					continue
 				}
 				txs := make(map[common.Address][]*txpool.LazyTransaction, len(ev.Txs))
 				for _, tx := range ev.Txs {
+					log.Info("Adding transaction to pending block", "tx_hash", tx.Hash().Hex())
 					acc, _ := types.Sender(w.current.signer, tx)
 					txs[acc] = append(txs[acc], &txpool.LazyTransaction{
 						Pool:      w.eth.TxPool(), // We don't know where this came from, yolo resolve from everywhere
@@ -795,7 +797,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction) (*typ
 		snap = env.state.Snapshot()
 		gp   = env.gasPool.Gas()
 	)
-	log.Info("Applying transaction", "tx_hash", tx.Hash(), "coinbase", env.coinbase, "gas_available", gp)
+	log.Info("executing transaction on node", "tx_hash", tx.Hash(), "coinbase", env.coinbase, "gas_available", gp)
 	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, *w.chain.GetVMConfig())
 	if err != nil {
 		log.Error("Transaction application failed", "tx_hash", tx.Hash(), "error", err)
@@ -1009,7 +1011,13 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) error {
 	pending := w.eth.TxPool().Pending(true)
 	log.Info("Pending transactions retrieved in fillTransactions", "count", len(pending))
-
+	for _, batch := range pending {
+		for _, tx := range batch {
+			if tx != nil {
+				log.Info("filltransactions pulling out of mempool", "tx_hash", tx.Hash.String())
+			}
+		}
+	}
 	// Split the pending transactions into locals and remotes.
 	localTxs, remoteTxs := make(map[common.Address][]*txpool.LazyTransaction), pending
 	for _, account := range w.eth.TxPool().Locals() {
