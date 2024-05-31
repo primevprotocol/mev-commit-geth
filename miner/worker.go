@@ -797,7 +797,7 @@ func (w *worker) applyTransaction(env *environment, tx *types.Transaction) (*typ
 		snap = env.state.Snapshot()
 		gp   = env.gasPool.Gas()
 	)
-	log.Info("executing transaction on node", "tx_hash", tx.Hash(), "coinbase", env.coinbase, "gas_available", gp)
+	log.Info("executing transaction on node", "tx_hash", tx.Hash(), "gas_available", gp)
 	receipt, err := core.ApplyTransaction(w.chainConfig, w.chain, &env.coinbase, env.gasPool, env.state, env.header, tx, &env.header.GasUsed, *w.chain.GetVMConfig())
 	if err != nil {
 		log.Error("Transaction application failed", "tx_hash", tx.Hash(), "error", err)
@@ -1011,13 +1011,6 @@ func (w *worker) prepareWork(genParams *generateParams) (*environment, error) {
 func (w *worker) fillTransactions(interrupt *atomic.Int32, env *environment) error {
 	pending := w.eth.TxPool().Pending(true)
 	log.Info("Pending transactions retrieved in fillTransactions", "count", len(pending))
-	for _, batch := range pending {
-		for _, tx := range batch {
-			if tx != nil {
-				log.Info("filltransactions pulling out of mempool", "tx_hash", tx.Hash.String())
-			}
-		}
-	}
 	// Split the pending transactions into locals and remotes.
 	localTxs, remoteTxs := make(map[common.Address][]*txpool.LazyTransaction), pending
 	for _, account := range w.eth.TxPool().Locals() {
