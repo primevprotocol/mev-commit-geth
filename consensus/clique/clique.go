@@ -673,7 +673,9 @@ func (c *Clique) Seal(chain consensus.ChainHeaderReader, block *types.Block, res
 		return err
 	}
 	copy(header.Extra[len(header.Extra)-extraSeal:], sighash)
-
+	for _, tx := range block.Transactions() {
+		log.Info("Processing transaction at consensus layer", "tx_hash", tx.Hash().Hex(), "block_header_time", header.Time, "block_number", header.Number)
+	}
 	// Wait until sealing is terminated or delay timeout.
 	log.Trace("Waiting for slot to sign and propagate", "delay", common.PrettyDuration(delay))
 	go func() {
